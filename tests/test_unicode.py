@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 import platform
 import tempfile
+import os
 
 import pexpect
 import unittest
@@ -112,6 +113,14 @@ class UnicodeTests(PexpectTestCase.PexpectTestCase):
         p.sendline('Aargh')
         p.sendline('Aårgh')
         p.expect_exact('Aargh')
+        try:
+            p.expect_exact('Aårgh')
+            assert False, 'should have raised UnicodeEncodeError'
+        except UnicodeEncodeError, err:
+            # basically assert the error that this fork of pexpect was meant to
+            # resolve, 'ascii' codec can't encode character u'\xe5' in
+            #          position 1: ordinal not in range(128)
+            pass
 
         p.sendeof()
         p.expect(pexpect.EOF)
@@ -122,6 +131,51 @@ class UnicodeTests(PexpectTestCase.PexpectTestCase):
         p.sendline('3½')
         p.sendeof()
         p.expect(pexpect.EOF)
+
+    def test_utf8_driven_editor (self):
+        # requires 'ed' editor
+        if pexpect.which('ed') is None:
+            self.skipTest('ed(1) not found in path')
+
+        p = pexpect.spawnu('ed UTF-8-demo.txt')
+#                encoding='utf-8',
+#                env={'LANG':'en_US.UTF-8'})
+        # should report some number of characters upon opening
+        p.expect(u'14052', timeout=1)
+        # Search for term 'Greek anthem', then print the 2nd line following,
+        p.sendline(u'/Greek anthem/2p')
+        # echo back, and result
+        p.expect(u'/Greek anthem/2p', timeout=1)
+        p.expect(u'Σὲ γνωρίζω ἀπὸ τὴν κόψη', timeout=1)
+#        p.expect(u'\u03a3\u1f72 \u03b3\u03bd\u03c9\u03c1\u1f77\u03b6\u03c9 '
+#                 u'\u1f00\u03c0\u1f78 \u03c4\u1f74\u03bd \u03ba\u1f79\u03c8\u03b7', timeout=1)
+        # bye!
+        p.sendline('q')
+        p.expect('q', timeout=1)
+
+    def test_utf8_driven_vim (self):
+        # requires 'vim' editor
+        if pexpect.which('vim') is None:
+            self.skipTest('vim(1) not found in path')
+
+        p = pexpect.spawnu('vim --nofork UTF-8-demo.txt')
+#                encoding='utf-8',
+#                env={'LANG':'en_US.UTF-8'})
+        # should report some number of characters upon opening
+        p.expect(u'14052', timeout=1)
+        # Search for term 'Greek anthem', then print the 2nd line following,
+        p.send('0G')
+        p.sendline(u'/Greek anthem')
+        p.send('jj')
+        # echo back, and result
+#        p.expect(u'/Greek anthem/2p', timeout=1)
+        p.expect(u'Σὲ γνωρίζω ἀπὸ τὴν κόψη', timeout=1)
+#        p.expect(u'\u03a3\u1f72 \u03b3\u03bd\u03c9\u03c1\u1f77\u03b6\u03c9 '
+#                 u'\u1f00\u03c0\u1f78 \u03c4\u1f74\u03bd \u03ba\u1f79\u03c8\u03b7', timeout=1)
+        # bye!
+        p.sendline('!q')
+        p.expect('!q', timeout=1)
+
 
 if __name__ == '__main__':
     unittest.main()
