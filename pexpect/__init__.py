@@ -87,7 +87,7 @@ except ImportError:  # pragma: no cover
 A critical module was not found. Probably this operating system does not
 support it. Pexpect is intended for UNIX-like operating systems.''')
 
-__version__ = '3.0'
+__version__ = '3.1'
 __revision__ = ''
 __all__ = ['ExceptionPexpect', 'EOF', 'TIMEOUT', 'spawn', 'spawnu', 'run', 'runu',
            'which', 'split_command_line', '__version__', '__revision__']
@@ -100,6 +100,7 @@ class ExceptionPexpect(Exception):
     '''
 
     def __init__(self, value):
+        super(ExceptionPexpect, self).__init__(value)
         self.value = value
 
     def __str__(self):
@@ -283,7 +284,14 @@ class spawn(object):
         def _chr(c):
             return bytes([c])
         linesep = os.linesep.encode('ascii')
-        write_to_stdout = sys.stdout.buffer.write
+
+        @staticmethod
+        def write_to_stdout(b):
+            try:
+                return sys.stdout.buffer.write(b)
+            except AttributeError:
+                # If stdout has been replaced, it may not have .buffer
+                return sys.stdout.write(b.decode('ascii', 'replace'))
     else:
         allowed_string_types = (basestring,)  # analysis:ignore
         _chr = staticmethod(chr)
@@ -1550,18 +1558,11 @@ class spawn(object):
         applications like vi or curses -- applications that respond to the
         SIGWINCH signal. '''
 
-        # Check for buggy platforms. Some Python versions on some platforms
-        # (notably OSF1 Alpha and RedHat 7.1) truncate the value for
-        # termios.TIOCSWINSZ. It is not clear why this happens.
-        # These platforms don't seem to handle the signed int very well;
-        # yet other platforms like OpenBSD have a large negative value for
-        # TIOCSWINSZ and they don't have a truncate problem.
-        # Newer versions of Linux have totally different values for TIOCSWINSZ.
-        # Note that this fix is a hack.
+        # Some very old platforms have a bug that causes the value for
+        # termios.TIOCSWINSZ to be truncated. There was a hack here to work
+        # around this, but it caused problems with newer platforms so has been
+        # removed. For details see https://github.com/pexpect/pexpect/issues/39
         TIOCSWINSZ = getattr(termios, 'TIOCSWINSZ', -2146929561)
-        if TIOCSWINSZ == 2148037735:
-            # Same bits, but with sign.
-            TIOCSWINSZ = -2146929561
         # Note, assume ws_xpixel and ws_ypixel are zero.
         s = struct.pack('HHHH', rows, cols, 0, 0)
         fcntl.ioctl(self.fileno(), TIOCSWINSZ, s)
@@ -1679,7 +1680,7 @@ class spawn(object):
                 return select.select(iwtd, owtd, ewtd, timeout)
             except select.error:
                 err = sys.exc_info()[1]
-                if err[0] == errno.EINTR:
+                if err.args[0] == errno.EINTR:
                     # if we loop back we have to subtract the
                     # amount of time we already waited.
                     if timeout is not None:
