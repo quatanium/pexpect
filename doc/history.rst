@@ -4,6 +4,31 @@ History
 Releases
 --------
 
+Version 3.3
+```````````
+
+* Added a mechanism to wrap REPLs, or shells, in an object which can conveniently
+  be used to send commands and wait for the output (:mod:`pexpect.replwrap`).
+* Fixed issue where pexpect would attempt to execute a directory because
+  it has the 'execute' bit set (:ghissue:`37`).
+* Removed the ``pexpect.psh`` module. This was never documented, and we found
+  no evidence that people use it. The new :mod:`pexpect.replwrap` module
+  provides a more flexible alternative.
+* Fixed ``TypeError: got <type 'str'> ('\r\n') as pattern`` in :meth:`spawnu.readline`
+  method (:ghissue:`67`).
+* Fixed issue where EOF was not correctly detected in :meth:`~.interact`, causing
+  a repeating loop of output on Linux, and blocking before EOF on BSD and
+  Solaris (:ghissue:`49`).
+* Several Solaris (SmartOS) bugfixes, preventing :exc:`IOError` exceptions, especially
+  when used with cron(1) (:ghissue:`44`).
+* Added new keyword argument ``echo=True`` for :class:`spawn`.  On SVR4-like
+  systems, the method :meth:`~.isatty` will always return *False*: the child pty
+  does not appear as a terminal.  Therefore, :meth:`~.setecho`, :meth:`~.getwinsize`,
+  :meth:`~.setwinsize`, and :meth:`~.waitnoecho` are not supported on those platforms.
+
+After this, we intend to start working on a bigger refactoring of the code, to
+be released as Pexpect 4. There may be more bugfix 3.x releases, however.
+
 Version 3.2
 ```````````
 
@@ -99,11 +124,11 @@ Version 2.3
   consistently on different platforms. Solaris is the most difficult to support.
 * You can now put ``TIMEOUT`` in a list of expected patterns. This is just like
   putting ``EOF`` in the pattern list. Expecting for a ``TIMEOUT`` may not be
-  used as often as ``EOF``, but this makes Pexpect more consitent.
+  used as often as ``EOF``, but this makes Pexpect more consistent.
 * Thanks to a suggestion and sample code from Chad J. Schroeder I added the ability
   for Pexpect to operate on a file descriptor that is already open. This means that
   Pexpect can be used to control streams such as those from serial port devices. Now,
-  you just pass the integer file descriptor as the "command" when contsructing a
+  you just pass the integer file descriptor as the "command" when constructing a
   spawn open. For example on a Linux box with a modem on ttyS1::
 
       fd = os.open("/dev/ttyS1", os.O_RDWR|os.O_NONBLOCK|os.O_NOCTTY)

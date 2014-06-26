@@ -20,7 +20,7 @@ PEXPECT LICENSE
 '''
 from pexpect import ANSI
 import unittest
-import PexpectTestCase
+from . import PexpectTestCase
 
 write_target = 'I\'ve got a ferret sticking up my nose.                           \n' +\
 '(He\'s got a ferret sticking up his nose.)                        \n' +\
@@ -128,6 +128,17 @@ class ansiTestCase (PexpectTestCase.PexpectTestCase):
         for c in tetris_text:
             s.process (c)
         assert str(s) == tetris_target
+
+    def test_lines(self):
+        s = ANSI.ANSI(5, 5)
+        s.write('a'*6 + '\n')
+        s.write('ab\bcd\n')
+        s.write('ab\rcd\n')
+        assert str(s) == ('aaaaa\n'
+                          'a    \n'
+                          'acd  \n'
+                          'cd   \n'
+                          '     ')
 
 if __name__ == '__main__':
     unittest.main()

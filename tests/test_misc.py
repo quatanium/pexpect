@@ -20,11 +20,12 @@ PEXPECT LICENSE
 '''
 import pexpect
 import unittest
-import PexpectTestCase
-import os, sys
+from . import PexpectTestCase
+import sys
 import re
 import signal
 import time
+import os
 
 # the program cat(1) may display ^D\x08\x08 when \x04 (EOF, Ctrl-D) is sent
 _CAT_EOF = b'^D\x08\x08'
@@ -33,7 +34,11 @@ class TestCaseMisc(PexpectTestCase.PexpectTestCase):
 
     def test_isatty (self):
         child = pexpect.spawn('cat')
-        assert child.isatty(), "Not returning True. Should always be True."
+        if not child.isatty() and sys.platform.lower().startswith('sunos'):
+            if hasattr(unittest, 'SkipTest'):
+                raise unittest.SkipTest("Not supported on this platform.")
+            return 'skip'
+        assert child.isatty()
 
     def test_read (self):
         child = pexpect.spawn('cat')
@@ -46,6 +51,13 @@ class TestCaseMisc(PexpectTestCase.PexpectTestCase):
         self.assertEqual(child.read(2), b'\r\n')
         remaining = child.read().replace(_CAT_EOF, b'')
         self.assertEqual(remaining, b'abc\r\n')
+
+    def test_readline_bin_echo(self):
+        # given,
+        child = pexpect.spawn('echo', ['input', ])
+
+        # exercise,
+        assert child.readline() == b'input' + child.crlf
 
     def test_readline (self):
         '''See the note in test_readlines() for an explaination as to why
@@ -95,7 +107,7 @@ class TestCaseMisc(PexpectTestCase.PexpectTestCase):
         assert (page == b'abc\r\nabc\r\n123\r\n123\r\n' or
                 page == b'abc\r\n123\r\nabc\r\n123\r\n' or
                 page == b'abc\r\n123abc\r\n\r\n123\r\n') , \
-               "iterator did not work. page=%r"(page,)
+               "iterator did not work. page=%r" % (page,)
 
     def test_readlines(self):
         '''Note that on some slow or heavily loaded systems that the lines
@@ -201,34 +213,28 @@ class TestCaseMisc(PexpectTestCase.PexpectTestCase):
         else:
             self.fail ("child.isalive() should have raised a pexpect.ExceptionPexpect")
         child.terminated = 1 # Force back to valid state so __del__ won't complain
+
     def test_bad_arguments (self):
         '''This tests that we get a graceful error when passing bad arguments.'''
-        try:
-            p = pexpect.spawn(1)
-        except pexpect.ExceptionPexpect:
-            pass
-        else:
-            self.fail ("pexpect.spawn(1) should have raised a pexpect.ExceptionPexpect.")
-        try:
-            p = pexpect.spawn('ls', '-la') # should really use pexpect.spawn('ls', ['-ls'])
-        except TypeError:
-            pass
-        else:
-            self.fail ("pexpect.spawn('ls', '-la') should have raised a TypeError.")
-        try:
-            p = pexpect.spawn('cat')
+        with self.assertRaises(pexpect.ExceptionPexpect):
+            pexpect.spawn(1)
+
+        with self.assertRaises(TypeError):
+            # should use pexpect.spawn('ls', ['-la'])
+            pexpect.spawn('ls', '-la')
+
+        with self.assertRaises(ValueError):
+            p = pexpect.spawn('cat', timeout=5)
             p.close()
             p.read_nonblocking(size=1, timeout=3)
-        except ValueError:
-            pass
-        else:
-            self.fail ("read_nonblocking on closed spawn object should have raised a ValueError.")
+
     def test_isalive(self):
         child = pexpect.spawn('cat')
         assert child.isalive(), child.isalive()
         child.sendeof()
         child.expect(pexpect.EOF)
         assert not child.isalive(), child.isalive()
+
     def test_bad_type_in_expect(self):
         child = pexpect.spawn('cat')
         try:
@@ -249,20 +255,6 @@ class TestCaseMisc(PexpectTestCase.PexpectTestCase):
         tmpdir =  pexpect.run('pwd', cwd='/tmp')
         assert default!=tmpdir, "'default' and 'tmpdir' should be different"
         assert (b'tmp' in tmpdir), "'tmp' should be returned by 'pwd' command"
-
-    def test_which (self):
-        p = os.defpath
-        ep = os.environ['PATH']
-        os.defpath = ":/tmp"
-        os.environ['PATH'] = ":/tmp"
-        wp = pexpect.which ("ticker.py")
-        assert wp == 'ticker.py', "Should return a string. Returned %s" % wp
-        os.defpath = "/tmp"
-        os.environ['PATH'] = "/tmp"
-        wp = pexpect.which ("ticker.py")
-        assert wp == None, "Executable should not be found. Returned %s" % wp
-        os.defpath = p
-        os.environ['PATH'] = ep
 
     def test_searcher_re (self):
         # This should be done programatically, if we copied and pasted output,

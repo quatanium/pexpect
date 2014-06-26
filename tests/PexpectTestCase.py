@@ -20,6 +20,7 @@ PEXPECT LICENSE
 '''
 from __future__ import print_function
 
+import contextlib
 import unittest
 import sys
 import os
@@ -28,9 +29,9 @@ class PexpectTestCase(unittest.TestCase):
     def setUp(self):
         self.PYTHONBIN = sys.executable
         self.original_path = os.getcwd()
-        project_dir = os.environ['PROJECT_PEXPECT_HOME']
-        newpath = os.path.join (project_dir, 'tests')
-        os.chdir (newpath)
+        tests_dir = os.path.dirname(__file__)
+        self.project_dir = project_dir = os.path.dirname(tests_dir)
+        os.chdir(tests_dir)
         os.environ['COVERAGE_PROCESS_START'] = os.path.join(project_dir, '.coveragerc')
         os.environ['COVERAGE_FILE'] = os.path.join(project_dir, '.coverage')
         print('\n', self.id(), end=' ')
@@ -40,3 +41,26 @@ class PexpectTestCase(unittest.TestCase):
     def tearDown(self):
         os.chdir (self.original_path)
 
+    if sys.version_info < (2,7):
+        # We want to use these methods, which are new/improved in 2.7, but
+        # we are still supporting 2.6 for the moment. This section can be
+        # removed when we drop Python 2.6 support.
+        @contextlib.contextmanager
+        def assertRaises(self, excClass):
+            try:
+                yield
+            except Exception as e:
+                assert isinstance(e, excClass)
+            else:
+                raise AssertionError("%s was not raised" % excClass)
+
+        @contextlib.contextmanager
+        def assertRaisesRegexp(self, excClass, pattern):
+            import re
+            try:
+                yield
+            except Exception as e:
+                assert isinstance(e, excClass)
+                assert re.match(pattern, str(e))
+            else:
+                raise AssertionError("%s was not raised" % excClass)
