@@ -1,5 +1,6 @@
 """Generic wrapper for read-eval-print-loops, a.k.a. interactive shells
 """
+import os.path
 import signal
 import sys
 import re
@@ -29,10 +30,13 @@ class REPLWrapper(object):
       parameters, so you can use ``{}`` style formatting to insert them into
       the command.
     :param str new_prompt: The more unique prompt to expect after the change.
+    :param str extra_init_cmd: Commands to do extra initialisation, such as
+      disabling pagers.
     """
     def __init__(self, cmd_or_spawn, orig_prompt, prompt_change,
                  new_prompt=PEXPECT_PROMPT,
-                 continuation_prompt=PEXPECT_CONTINUATION_PROMPT):
+                 continuation_prompt=PEXPECT_CONTINUATION_PROMPT,
+                 extra_init_cmd=None):
         if isinstance(cmd_or_spawn, str):
             self.child = pexpect.spawnu(cmd_or_spawn, echo=False)
         else:
@@ -52,6 +56,9 @@ class REPLWrapper(object):
         self.continuation_prompt = continuation_prompt
 
         self._expect_prompt()
+
+        if extra_init_cmd is not None:
+            self.run_command(extra_init_cmd)
 
     def set_prompt(self, orig_prompt, prompt_change):
         self.child.expect(orig_prompt)
@@ -98,6 +105,9 @@ def python(command="python"):
     """Start a Python shell and return a :class:`REPLWrapper` object."""
     return REPLWrapper(command, u(">>> "), u("import sys; sys.ps1={0!r}; sys.ps2={1!r}"))
 
-def bash(command="bash", orig_prompt=re.compile('[$#]')):
+def bash(command="bash"):
     """Start a bash shell and return a :class:`REPLWrapper` object."""
-    return REPLWrapper(command, orig_prompt, u("PS1='{0}' PS2='{1}' PROMPT_COMMAND=''"))
+    bashrc = os.path.join(os.path.dirname(__file__), 'bashrc.sh')
+    child = pexpect.spawnu(command, ['--rcfile', bashrc], echo=False)
+    return REPLWrapper(child, u'\$', u("PS1='{0}' PS2='{1}' PROMPT_COMMAND=''"),
+                       extra_init_cmd="export PAGER=cat")
