@@ -284,13 +284,13 @@ class pxssh (spawn):
             # This is what you get if SSH does not have the remote host's
             # public key stored in the 'known_hosts' cache.
             self.sendline("yes")
-            i = self.expect(["(?i)you want to continue connecting", original_prompt, "(?i)(?:password)|(?:passphrase for key)", "(?i)permission denied", "(?i)terminal type", TIMEOUT])
+            i = self.expect(["(?i)you want to continue connecting", original_prompt, "(?i)(?:password)|(?:passphrase for key)", "(?i)permission denied", "(?i)terminal type", TIMEOUT], timeout=login_timeout)
         if i==2: # password or passphrase
             self.sendline(password)
-            i = self.expect(["(?i)you want to continue connecting", original_prompt, "(?i)(?:password)|(?:passphrase for key)", "(?i)permission denied", "(?i)terminal type", TIMEOUT])
+            i = self.expect(["(?i)you want to continue connecting", original_prompt, "(?i)(?:password)|(?:passphrase for key)", "(?i)permission denied", "(?i)terminal type", TIMEOUT], timeout=login_timeout)
         if i==4:
             self.sendline(terminal_type)
-            i = self.expect(["(?i)you want to continue connecting", original_prompt, "(?i)(?:password)|(?:passphrase for key)", "(?i)permission denied", "(?i)terminal type", TIMEOUT])
+            i = self.expect(["(?i)you want to continue connecting", original_prompt, "(?i)(?:password)|(?:passphrase for key)", "(?i)permission denied", "(?i)terminal type", TIMEOUT], timeout=login_timeout)
 
         # Second phase
         if i==0:
