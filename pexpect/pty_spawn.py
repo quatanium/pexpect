@@ -475,7 +475,7 @@ class spawn(SpawnBase):
 
         On Linux systems, this is 4096 (defined by N_TTY_BUF_SIZE). All
         other systems honor the POSIX.1 definition PC_MAX_CANON -- 1024
-        on OSX, 256 on OpenSolaris, 255 on FreeBSD.
+        on OSX, 256 on OpenSolaris, and 1920 on FreeBSD.
 
         This value may be discovered using fpathconf(3)::
 
@@ -614,10 +614,17 @@ class spawn(SpawnBase):
         not read any data from the child, so this will block forever if the
         child has unread output and has terminated. In other words, the child
         may have printed output then called exit(), but, the child is
-        technically still alive until its output is read by the parent. '''
+        technically still alive until its output is read by the parent.
+
+        This method is non-blocking if :meth:`wait` has already been called
+        previously or :meth:`isalive` method returns False.  It simply returns
+        the previously determined exit status.
+        '''
 
         ptyproc = self.ptyproc
         with _wrap_ptyprocess_err():
+            # exception may occur if "Is some other process attempting
+            # "job control with our child pid?"
             exitstatus = ptyproc.wait()
         self.status = ptyproc.status
         self.exitstatus = ptyproc.exitstatus
