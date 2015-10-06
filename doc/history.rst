@@ -7,24 +7,37 @@ Releases
 Version 4.0
 ```````````
 
-* Integration with :mod:`asyncio`: passing ``async=True`` to :meth:`~.expect`,
-  :meth:`~.expect_exact` or :meth:`~.expect_list` will make them return a
+* Integration with :mod:`asyncio`: passing ``async=True`` to :meth:`~.spawn.expect`,
+  :meth:`~.spawn.expect_exact` or :meth:`~.spawn.expect_list` will make them return a
   coroutine. You can get the result using ``yield from``, or wrap it in an
   :class:`asyncio.Task`. This allows the event loop to do other things while
   waiting for output that matches a pattern.
+* Experimental support for Windows (with some caveats)—see :ref:`windows`.
 * Enhancement: allow method as callbacks of argument ``events`` for
   :func:`pexpect.run` (:ghissue:`176`).
-* It is now possible to call :meth:`~.wait` multiple times, or after a process
+* It is now possible to call :meth:`~.spawn.wait` multiple times, or after a process
   is already determined to be terminated without raising an exception
   (:ghpull:`211`).
-
-Version 3.4
-```````````
+* New :class:`pexpect.spawn` keyword argument, ``dimensions=(rows, columns)``
+  allows setting terminal screen dimensions before launching a program
+  (:ghissue:`122`).
 * Fix regression that prevented executable, but unreadable files from
   being found when not specified by absolute path -- such as
   /usr/bin/sudo (:ghissue:`104`).
 * Fixed regression when executing pexpect with some prior releases of
   the multiprocessing module where stdin has been closed (:ghissue:`86`).
+
+Backwards incompatible changes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Deprecated ``pexpect.screen`` and ``pexpect.ANSI``. Please use other packages
+  such as `pyte <https://pypi.python.org/pypi/pyte>`__ to emulate a terminal.
+* Removed the independent top-level modules (``pxssh fdpexpect FSM screen ANSI``)
+  which were installed alongside Pexpect. These were moved into the Pexpect
+  package in 3.0, but the old names were left as aliases.
+* Child processes created by Pexpect no longer ignore SIGHUP by default: the
+  ``ignore_sighup`` parameter of :class:`pexpect.spawn` defaults to False. To
+  get the old behaviour, pass ``ignore_sighup=True``.
 
 Version 3.3
 ```````````

@@ -2,10 +2,8 @@ import os
 import sys
 import time
 import select
-import re
 import pty
 import tty
-import termios
 import errno
 import signal
 from contextlib import contextmanager
@@ -14,7 +12,7 @@ import ptyprocess
 from ptyprocess.ptyprocess import use_native_pty_fork
 
 from .exceptions import ExceptionPexpect, EOF, TIMEOUT
-from .spawnbase import SpawnBase, SpawnBaseUnicode
+from .spawnbase import SpawnBase
 from .utils import which, split_command_line
 
 @contextmanager
@@ -30,14 +28,14 @@ PY3 = (sys.version_info[0] >= 3)
 class spawn(SpawnBase):
     '''This is the main class interface for Pexpect. Use this class to start
     and control child applications. '''
-    ptyprocess_class = ptyprocess.PtyProcess
 
     # This is purely informational now - changing it has no effect
     use_native_pty_fork = use_native_pty_fork
 
     def __init__(self, command, args=[], timeout=30, maxread=2000,
                  searchwindowsize=None, logfile=None, cwd=None, env=None,
-                 ignore_sighup=True, echo=True, preexec_fn=None):
+                 ignore_sighup=False, echo=True, preexec_fn=None,
+                 encoding=None, codec_errors='strict', dimensions=None):
         '''This is the constructor. The command parameter may be a string that
         includes a command and any arguments to the command. For example::
 
@@ -78,15 +76,19 @@ class spawn(SpawnBase):
         output are read back from the child. This feature is useful in
         conjunction with searchwindowsize.
 
-        The searchwindowsize attribute sets the how far back in the incoming
-        seach buffer Pexpect will search for pattern matches. Every time
-        Pexpect reads some data from the child it will append the data to the
-        incoming buffer. The default is to search from the beginning of the
-        incoming buffer each time new data is read from the child. But this is
-        very inefficient if you are running a command that generates a large
-        amount of data where you want to match. The searchwindowsize does not
-        affect the size of the incoming data buffer. You will still have
-        access to the full buffer after expect() returns.
+        When the keyword argument *searchwindowsize* is None (default), the
+        full buffer is searched at each iteration of receiving incoming data.
+        The default number of bytes scanned at each iteration is very large
+        and may be reduced to collaterally reduce search cost.  After
+        :meth:`~.expect` returns, the full buffer attribute remains up to
+        size *maxread* irrespective of *searchwindowsize* value.
+
+        When the keyword argument ``timeout`` is specified as a number,
+        (default: *30*), then :class:`TIMEOUT` will be raised after the value
+        specified has elapsed, in seconds, for any of the :meth:`~.expect`
+        family of method calls.  When None, TIMEOUT will not be raised, and
+        :meth:`~.expect` may block indefinitely until match.
+
 
         The logfile member turns on or off logging. All input and output will
         be copied to the given file object. Set logfile to None to stop
@@ -117,7 +119,7 @@ class spawn(SpawnBase):
             child = pexpect.spawn('some_command')
             child.logfile_read = sys.stdout
 
-        Remember to use spawnu instead of spawn for the above code if you are
+        You will need to pass an encoding to spawn in the above code if you are
         using Python 3.
 
         To separately log output sent to the child use logfile_send::
@@ -125,9 +127,8 @@ class spawn(SpawnBase):
             child.logfile_send = fout
 
         If ``ignore_sighup`` is True, the child process will ignore SIGHUP
-        signals. For now, the default is True, to preserve the behaviour of
-        earlier versions of Pexpect, but you should pass this explicitly if you
-        want to rely on it.
+        signals. The default is False from Pexpect 4.0, meaning that SIGHUP
+        will be handled normally by the child.
 
         The delaybeforesend helps overcome a weird behavior that many users
         were experiencing. The typical problem was that a user would expect() a
@@ -170,9 +171,13 @@ class spawn(SpawnBase):
         If preexec_fn is given, it will be called in the child process before
         launching the given command. This is useful to e.g. reset inherited
         signal handlers.
+
+        The dimensions attribute specifies the size of the pseudo-terminal as
+        seen by the subprocess, and is specified as a two-entry tuple (rows,
+        columns). If this is unspecified, the defaults in ptyprocess will apply.
         '''
         super(spawn, self).__init__(timeout=timeout, maxread=maxread, searchwindowsize=searchwindowsize,
-                                    logfile=logfile)
+                                    logfile=logfile, encoding=encoding, codec_errors=codec_errors)
         self.STDIN_FILENO = pty.STDIN_FILENO
         self.STDOUT_FILENO = pty.STDOUT_FILENO
         self.STDERR_FILENO = pty.STDERR_FILENO
@@ -186,7 +191,7 @@ class spawn(SpawnBase):
             self.args = None
             self.name = '<pexpect factory incomplete>'
         else:
-            self._spawn(command, args, preexec_fn)
+            self._spawn(command, args, preexec_fn, dimensions)
 
     def __str__(self):
         '''This returns a human-readable string that represents the state of
@@ -222,7 +227,7 @@ class spawn(SpawnBase):
         s.append('delayafterterminate: ' + str(self.delayafterterminate))
         return '\n'.join(s)
 
-    def _spawn(self, command, args=[], preexec_fn=None):
+    def _spawn(self, command, args=[], preexec_fn=None, dimensions=None):
         '''This starts the given command in a child process. This does all the
         fork/exec type of stuff for a pty. This is called by __init__. If args
         is empty then command will be parsed (split on spaces) and args will be
@@ -277,7 +282,10 @@ class spawn(SpawnBase):
                     preexec_fn()
             kwargs['preexec_fn'] = preexec_wrapper
 
-        self.ptyproc = self.ptyprocess_class.spawn(self.args, env=self.env,
+        if dimensions is not None:
+            kwargs['dimensions'] = dimensions
+
+        self.ptyproc = ptyprocess.PtyProcess.spawn(self.args, env=self.env,
                                                    cwd=self.cwd, **kwargs)
 
         self.pid = self.ptyproc.pid
@@ -295,7 +303,7 @@ class spawn(SpawnBase):
         and SIGINT). '''
 
         self.flush()
-        self.ptyproc.close()
+        self.ptyproc.close(force=force)
         self.isalive()  # Update exit status from ptyproc
         self.child_fd = -1
 
@@ -388,8 +396,8 @@ class spawn(SpawnBase):
         '''This reads at most size characters from the child application. It
         includes a timeout. If the read does not complete within the timeout
         period then a TIMEOUT exception is raised. If the end of file is read
-        then an EOF exception will be raised. If a log file was set using
-        setlog() then all data will also be written to the log file.
+        then an EOF exception will be raised.  If a logfile is specified, a
+        copy is written to that log.
 
         If timeout is None then the read may block indefinitely.
         If timeout is -1 then the self.timeout value is used. If timeout is 0
@@ -397,7 +405,7 @@ class spawn(SpawnBase):
         then this will raise a TIMEOUT exception.
 
         The timeout refers only to the amount of time to read at least one
-        character. This is not effected by the 'size' parameter, so if you call
+        character. This is not affected by the 'size' parameter, so if you call
         read_nonblocking(size=100, timeout=30) and only one character is
         available right away then one character will be returned immediately.
         It will not wait for 30 seconds for another 99 characters to come in.
@@ -503,10 +511,8 @@ class spawn(SpawnBase):
         s = self._coerce_send_string(s)
         self._log(s, 'send')
 
-        return self._send(s)
-
-    def _send(self, s):
-        return os.write(self.child_fd, s)
+        b = self._encoder.encode(s, final=False)
+        return os.write(self.child_fd, b)
 
     def sendline(self, s=''):
         '''Wraps send(), sending string ``s`` to child process, with
@@ -519,9 +525,11 @@ class spawn(SpawnBase):
         n = n + self.send(self.linesep)
         return n
 
-    def _log_control(self, byte):
+    def _log_control(self, s):
         """Write control characters to the appropriate log files"""
-        self._log(byte, 'send')
+        if self.encoding is not None:
+            s = s.decode(self.encoding, 'replace')
+        self._log(s, 'send')
 
     def sendcontrol(self, char):
         '''Helper method that wraps send() with mnemonic access for sending control
@@ -684,11 +692,13 @@ class spawn(SpawnBase):
         the stdout and stderr output of the child process is printed. This
         simply echos the child stdout and child stderr to the real stdout and
         it echos the real stdin to the child stdin. When the user types the
-        escape_character this method will stop. The default for
-        escape_character is ^]. This should not be confused with ASCII 27 --
-        the ESC character. ASCII 29 was chosen for historical merit because
-        this is the character used by 'telnet' as the escape character. The
-        escape_character will not be sent to the child process.
+        escape_character this method will return None. The escape_character
+        will not be transmitted.  The default for escape_character is
+        entered as ``Ctrl - ]``, the very same as BSD telnet. To prevent
+        escaping, escape_character may be set to None.
+
+        If a logfile is specified, then the data sent and received from the
+        child process in interact mode is duplicated to the given log.
 
         You may pass in optional input and output filter functions. These
         functions should take a string and return a string. The output_filter
@@ -720,7 +730,7 @@ class spawn(SpawnBase):
         self.buffer = self.string_type()
         mode = tty.tcgetattr(self.STDIN_FILENO)
         tty.setraw(self.STDIN_FILENO)
-        if PY3:
+        if escape_character is not None and PY3:
             escape_character = escape_character.encode('latin-1')
         try:
             self.__interact_copy(escape_character, input_filter, output_filter)
@@ -762,19 +772,22 @@ class spawn(SpawnBase):
                     break
                 if output_filter:
                     data = output_filter(data)
-                if self.logfile is not None:
-                    self.logfile.write(data)
-                    self.logfile.flush()
+                self._log(data, 'read')
                 os.write(self.STDOUT_FILENO, data)
             if self.STDIN_FILENO in r:
                 data = self.__interact_read(self.STDIN_FILENO)
                 if input_filter:
                     data = input_filter(data)
-                i = data.rfind(escape_character)
+                i = -1
+                if escape_character is not None:
+                    i = data.rfind(escape_character)
                 if i != -1:
                     data = data[:i]
+                    if data:
+                        self._log(data, 'send')
                     self.__interact_writen(self.child_fd, data)
                     break
+                self._log(data, 'send')
                 self.__interact_writen(self.child_fd, data)
 
     def __select(self, iwtd, owtd, ewtd, timeout=None):
@@ -805,22 +818,7 @@ class spawn(SpawnBase):
                     # this actually is an exception.
                     raise
 
-
-class spawnu(SpawnBaseUnicode, spawn):
-    """Works like spawn, but accepts and returns unicode strings.
-
-    Extra parameters:
-
-    :param encoding: The encoding to use for communications (default: 'utf-8')
-    :param errors: How to handle encoding/decoding errors; one of 'strict'
-                   (the default), 'ignore', or 'replace', as described
-                   for :meth:`~bytes.decode` and :meth:`~str.encode`.
-    """
-    ptyprocess_class = ptyprocess.PtyProcessUnicode
-
-    def _send(self, s):
-        return os.write(self.child_fd, s.encode(self.encoding, self.errors))
-
-    def _log_control(self, byte):
-        s = byte.decode(self.encoding, 'replace')
-        self._log(s, 'send')
+def spawnu(*args, **kwargs):
+    """Deprecated: pass encoding to spawn() instead."""
+    kwargs.setdefault('encoding', 'utf-8')
+    return spawn(*args, **kwargs)

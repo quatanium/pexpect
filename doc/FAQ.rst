@@ -1,6 +1,17 @@
 FAQ
 ===
 
+**Q: Where can I get help with pexpect?  Is there a mailing list?**
+
+A: You can use the `pexpect tag on Stackoverflow <http://stackoverflow.com/questions/tagged/pexpect>`__
+to ask questions specifically related to Pexpect. For more general Python
+support, there's the python-list_ mailing list, and the `#python`_
+IRC channel.  Please refrain from using github for general
+python or systems scripting support.
+
+.. _python-list: https://mail.python.org/mailman/listinfo/python-list
+.. _#python: https://www.python.org/community/irc/
+
 **Q: Why don't shell pipe and redirect (| and >) work when I spawn a command?**
 
 A: Remember that Pexpect does NOT interpret shell meta characters such as
@@ -20,15 +31,6 @@ previous example::
     shell_cmd = 'ls -l | grep LOG > log_list.txt'
     child = pexpect.spawn('/bin/bash', ['-c', shell_cmd])
     child.expect(pexpect.EOF)
-
-**Q: Isn't there already a Python Expect?**
-
-A: Yes, there are several of them. They usually require you to compile C.
-I wanted something that was pure Python and preferably a single module
-that was simple to install. I also wanted something that was easy to use.
-This pure Python expect only became possible with the introduction of
-the pty module in the standard Python library. Previously, C extensions
-were required.
 
 **Q: The `before` and `after` properties sound weird.**
 
@@ -126,11 +128,18 @@ another application.
 **Q: Can I do screen scraping with this thing?**
 
 A: That depends. If your application just does line-oriented output then
-this is easy. If it does screen-oriented output then it may work, but it
-could be hard. For example, trying to scrape data from the 'top' command
-would be hard. The top command repaints the text window.
+this is easy. If a program emits many terminal sequences, from video
+attributes to screen addressing, such as programs using curses, then
+it may become very difficult to ascertain what text is displayed on a screen.
 
-I am working on an ANSI / VT100 terminal emulator that will have methods
-to get characters from an arbitrary X,Y coordinate of the virtual screen.
-It works and you can play with it (see :mod:`pexpect.ANSI`), but I have
-no working examples at this time. 
+We suggest using the `pyte <https://github.com/selectel/pyte>`_ library to
+screen-scrape.  The module :mod:`pexpect.ANSI` released with previous versions
+of pexpect is now marked deprecated and may be removed in the future.
+
+**Q: I get strange behavior with pexect and gevent**
+
+A: Pexpect uses fork(2), exec(2), select(2), waitpid(2), and implements its
+own selector in expect family of calls. pexpect has been known to misbehave
+when paired with gevent.  A solution might be to isolate your pexpect
+dependent code from any frameworks that manipulate event selection behavior
+by running it in an another process entirely.
